@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Simulador del triangle de potències</title>
+<style>
+  :root{
+    --text:#2C2C2B; --muted:#7D7A75; --bg:#FFFFFF; --soft:#F9F8F7; --soft2:#F0EFED; --border:#E6E5E3;
+    --blue:#2783DE; --blue-soft:#E5F2FC; --orange:#D5803B; --orange-soft:#FBEBDE; --green:#46A171; --green-soft:#E8F1EC;
+    --red:#E56458; --red-soft:#FCE9E7; --purple:#9B6BC6; --purple-soft:#F3ECF9; --grid:#ECEBE9; --axis:#B9B6B0;
+  }
+  body.dark{
+    --text:#FFFFFF; --muted:rgba(255,255,255,.65); --bg:#191919; --soft:#202020; --soft2:#2a2a29; --border:rgba(255,255,255,.2);
+    --blue:#5E9FE8; --blue-soft:rgba(94,159,232,.12); --orange:#DE9255; --orange-soft:rgba(222,146,85,.12);
+    --green:#72BC8F; --green-soft:rgba(114,188,143,.12); --red:#E97366; --red-soft:rgba(233,115,102,.12);
+    --purple:#BF8EDA; --purple-soft:rgba(191,142,218,.12); --grid:#2c2c2b; --axis:#6b6965;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;min-height:100%}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);
+       padding:22px 32px;display:flex;flex-direction:column;gap:16px;transition:background .2s,color .2s}
+  header{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
+  h1{margin:0;font-size:30px;letter-spacing:-.01em}
+  .sub{color:var(--muted);font-size:17px;margin-top:4px}
+  .formula{font-family:Georgia,"Times New Roman",serif;font-size:22px;background:var(--soft);border:1px solid var(--border);border-radius:12px;padding:8px 18px}
+  .cP{color:var(--blue);font-weight:700}.cQ{color:var(--orange);font-weight:700}.cS{color:var(--green);font-weight:700}.cF{color:var(--purple);font-weight:700}
+  main{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(320px,1fr);gap:20px;flex:1}
+  .stage{background:var(--soft);border:1px solid var(--border);border-radius:16px;padding:8px;display:flex;align-items:center}
+  svg{width:100%;height:auto;max-height:calc(100vh - 150px);display:block}
+  .side{display:flex;flex-direction:column;gap:14px}
+  .ctrl{border:1px solid var(--border);border-radius:14px;padding:14px 18px;background:var(--bg)}
+  .ctrl .row{display:flex;justify-content:space-between;align-items:baseline}
+  .ctrl .name{font-size:16px;font-weight:600}
+  .ctrl .num{font-size:28px;font-weight:700;font-variant-numeric:tabular-nums}
+  .ctrl .hint{font-size:13px;color:var(--muted);display:flex;justify-content:space-between;margin-top:2px}
+  input[type=range]{width:100%;height:30px;margin:6px 0 0}
+  #sP{accent-color:var(--blue)} #sQ{accent-color:var(--orange)}
+  .cards{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .card{border-radius:14px;padding:12px 16px}
+  .card .lab{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600}
+  .card .val{font-size:32px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:2px}
+  .card .note{font-size:14px;color:var(--muted)}
+  .card.S{background:var(--green-soft)} .card.S .val{color:var(--green)}
+  .card.F{background:var(--purple-soft)} .card.F .val{color:var(--purple)}
+  .card.A{background:var(--soft);border:1px solid var(--border)}
+  .card.C{background:var(--soft);border:1px solid var(--border)}
+  .meter{position:relative;height:14px;border-radius:7px;background:var(--soft2);margin-top:8px;overflow:hidden}
+  .meter .fill{position:absolute;left:0;top:0;bottom:0;border-radius:7px;transition:width .08s}
+  .meter .ref{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--text);left:95%}
+  .badge{display:inline-block;font-size:14px;font-weight:600;padding:3px 10px;border-radius:999px;margin-top:6px}
+  .bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  button{font:inherit;font-size:14px;padding:7px 12px;border-radius:10px;border:1px solid var(--border);background:var(--bg);color:var(--text);cursor:pointer}
+  button:hover{background:var(--soft2)}
+  .bar .lbl{font-size:13px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em;margin-right:4px}
+  @media (max-width:980px){main{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Simulador del triangle de potències</h1>
+    <div class="sub">Ajusta la potència activa <b>P</b> i la reactiva <b>Q</b>: el triangle, <b>S</b> i el factor de potència s’actualitzen en temps real.</div>
+  </div>
+  <div class="formula"><span class="cS">S</span> = √(<span class="cP">P</span>² + <span class="cQ">Q</span>²) &nbsp;·&nbsp; <span class="cF">cos φ</span> = <span class="cP">P</span> / <span class="cS">S</span></div>
+</header>
+
+<main>
+  <div class="stage"><svg id="svg" viewBox="0 0 680 790" aria-label="Triangle de potències"></svg></div>
+
+  <div class="side">
+    <div class="ctrl">
+      <div class="row"><span class="name cP">Potència activa P</span><span class="num cP" id="vP"></span></div>
+      <input id="sP" type="range" min="0" max="10" step="0.1" value="6">
+      <div class="hint"><span>0 kW</span><span>Treball útil (calor, moviment…)</span><span>10 kW</span></div>
+    </div>
+    <div class="ctrl">
+      <div class="row"><span class="name cQ">Potència reactiva Q</span><span class="num cQ" id="vQ"></span></div>
+      <input id="sQ" type="range" min="-8" max="8" step="0.1" value="4.5">
+      <div class="hint"><span>−8 kvar (capacitiva)</span><span>0</span><span>+8 kvar (inductiva)</span></div>
+    </div>
+
+    <div class="cards">
+      <div class="card S"><div class="lab">Potència aparent S</div><div class="val" id="vS"></div><div class="note">Hipotenusa del triangle</div></div>
+      <div class="card F"><div class="lab">Factor de potència</div><div class="val" id="vF"></div>
+        <div class="meter"><div class="fill" id="mFill"></div><div class="ref" title="Referència 0,95"></div></div>
+        <div class="note" id="fNote"></div></div>
+      <div class="card A"><div class="lab">Angle φ</div><div class="val" id="vPhi"></div><div class="note" id="phiNote"></div></div>
+      <div class="card C"><div class="lab">Tipus de càrrega</div><div class="val" style="font-size:24px" id="vType"></div><div class="note" id="typeNote"></div></div>
+    </div>
+
+    <div class="bar">
+      <span class="lbl">Exemples</span>
+      <button data-p="5" data-q="0">Resistència pura</button>
+      <button data-p="6" data-q="4.5">Motor (cos φ 0,8)</button>
+      <button data-p="3" data-q="6">Motor en buit</button>
+      <button data-p="6" data-q="-3">Càrrega capacitiva</button>
+      <button data-p="6" data-q="1.97">cos φ = 0,95</button>
+      <button id="theme">Clar / fosc</button>
+    </div>
+  </div>
+</main>
+
+<script>
+(() => {
+  const NS = "http://www.w3.org/2000/svg", svg = document.getElementById("svg");
+  const OX = 90, OY = 380, K = 42;           // origen i escala (px per kW / kvar) — mateixa escala als dos eixos
+  const PMAX = 10, QMAX = 8;
+  const $ = id => document.getElementById(id);
+  const css = v => getComputedStyle(document.body).getPropertyValue(v).trim();
+  const nf = (x, d = 2) => { const v = Math.abs(x) < 0.5 * Math.pow(10, -d) ? 0 : x; return v.toLocaleString("ca-ES", {minimumFractionDigits: d, maximumFractionDigits: d}); };
+  const el = (tag, a = {}, p = svg) => { const e = document.createElementNS(NS, tag); for (const k in a) e.setAttribute(k, a[k]); p.appendChild(e); return e; };
+
+  const gS = el("g"), gD = el("g");
+  function drawStatic(){
+    gS.innerHTML = "";
+    const grid = css("--grid"), axis = css("--axis"), muted = css("--muted");
+    for (let p = 0; p <= PMAX; p++) el("line",{x1:OX+p*K,y1:OY-QMAX*K,x2:OX+p*K,y2:OY+QMAX*K,stroke:grid,"stroke-width":1.5},gS);
+    for (let q = -QMAX; q <= QMAX; q++) el("line",{x1:OX,y1:OY-q*K,x2:OX+PMAX*K,y2:OY-q*K,stroke:grid,"stroke-width":1.5},gS);
+    el("line",{x1:OX-10,y1:OY,x2:OX+PMAX*K+25,y2:OY,stroke:axis,"stroke-width":2},gS);
+    el("line",{x1:OX,y1:OY+QMAX*K+10,x2:OX,y2:OY-QMAX*K-10,stroke:axis,"stroke-width":2},gS);
+    const t = (x,y,s,anc="middle",size=15,fill=muted,w=400) => { const e = el("text",{x,y,"text-anchor":anc,"font-size":size,fill,"font-weight":w},gS); e.textContent = s; };
+    for (let p = 2; p <= PMAX; p += 2) t(OX+p*K, OY+QMAX*K+28, p);
+    for (let q = -QMAX; q <= QMAX; q += 2) t(OX-12, OY-q*K+5, String(q).replace("-","−"), "end");
+    t(OX+PMAX*K/2, OY+QMAX*K+50, "P (kW)", "middle", 16, muted, 600);
+    t(OX-12, OY-QMAX*K-22, "Q (kvar)", "middle", 16, muted, 600);
+    t(OX+PMAX*K-6, OY-QMAX*K+20, "Inductiva (Q > 0)", "end", 15, muted, 600);
+    t(OX+PMAX*K-6, OY+QMAX*K-10, "Capacitiva (Q < 0)", "end", 15, muted, 600);
+  }
+
+  const tri = el("polygon",{opacity:.12},gD);
+  const arc = el("path",{fill:"none","stroke-width":3},gD);
+  const arcT = el("text",{"font-size":20,"font-weight":700,"text-anchor":"middle","dominant-baseline":"middle","font-family":"Georgia,serif","font-style":"italic"},gD);
+  const right = el("path",{fill:"none","stroke-width":1.8},gD);
+  const mkVec = () => ({ line: el("line",{"stroke-width":6,"stroke-linecap":"round"},gD), head: el("path",{},gD), label: el("text",{"font-size":19,"font-weight":700},gD) });
+  const vP = mkVec(), vQ = mkVec(), vS = mkVec();
+  const dot = el("circle",{cx:OX,cy:OY,r:6},gD);
+
+  function vec(v, x1, y1, x2, y2, color){
+    const L = Math.hypot(x2-x1, y2-y1), show = L > 2;
+    [v.line, v.head].forEach(e => e.style.display = show ? "" : "none");
+    v.line.setAttribute("stroke", color); v.head.setAttribute("fill", color); v.label.setAttribute("fill", color);
+    if (!show) return;
+    const ux = (x2-x1)/L, uy = (y2-y1)/L, hl = Math.min(20, L*0.6), hw = hl*0.55;
+    const bx = x2-ux*hl, by = y2-uy*hl;
+    v.line.setAttribute("x1",x1); v.line.setAttribute("y1",y1); v.line.setAttribute("x2",bx); v.line.setAttribute("y2",by);
+    v.head.setAttribute("d",`M${x2},${y2} L${bx-uy*hw},${by+ux*hw} L${bx+uy*hw},${by-ux*hw} Z`);
+  }
+  function label(t, x, y, s, anchor = "middle"){ t.setAttribute("x",x); t.setAttribute("y",y); t.setAttribute("text-anchor",anchor); t.textContent = s; }
+
+  function update(){
+    const P = parseFloat($("sP").value), Q = parseFloat($("sQ").value);
+    const S = Math.hypot(P, Q), phi = Math.atan2(Q, P), phiDeg = phi*180/Math.PI;
+    const fp = S > 1e-9 ? P/S : NaN;
+    const blue = css("--blue"), orange = css("--orange"), green = css("--green"), purple = css("--purple"), text = css("--text"), muted = css("--muted");
+    const ex = OX + P*K, ey = OY - Q*K;
+
+    tri.setAttribute("points", `${OX},${OY} ${ex},${OY} ${ex},${ey}`); tri.setAttribute("fill", green);
+    vec(vP, OX, OY, ex, OY, blue);
+    vec(vQ, ex, OY, ex, ey, orange);
+    vec(vS, OX, OY, ex, ey, green);
+    dot.setAttribute("fill", text);
+
+    // etiquetes
+    const qDown = Q < 0;
+    label(vP.label, OX + P*K/2, qDown ? OY - 14 : OY + 30, P > 0.05 ? `P = ${nf(P,1)} kW` : "");
+    label(vQ.label, ex + 14, OY - Q*K/2 + 6, Math.abs(Q) > 0.05 ? `Q = ${nf(Q,1).replace("-","−")} kvar` : "", "start");
+    if (P > 0.4 && Math.abs(Q) > 0.4) {
+      label(vQ.label, ex + 14, OY - Q*K/2 + 6, `Q = ${nf(Q,1).replace("-","−")} kvar`, "start");
+    }
+    // etiqueta S perpendicular a la hipotenusa, cap a fora del triangle
+    if (S > 0.05){
+      const L = Math.hypot(ex-OX, ey-OY), nx = (ey-OY)/L, ny = -(ex-OX)/L; // normal
+      const sgn = Q >= 0 ? 1 : -1;
+      const mx = (OX+ex)/2 + nx*26*sgn, my = (OY+ey)/2 + ny*26*sgn + 6;
+      label(vS.label, mx, my, `S = ${nf(S,2)} kVA`, Math.abs(Q) < 0.3 ? "middle" : "end");
+      if (Math.abs(Q) < 0.3) label(vS.label, OX + P*K/2, OY - 16, `S = ${nf(S,2)} kVA`);
+    } else label(vS.label, 0, 0, "");
+    // si P=S (Q≈0), agrupa etiquetes
+    if (Math.abs(Q) < 0.3 && P > 0.05) label(vP.label, OX + P*K/2, OY + 30, `P = ${nf(P,1)} kW`);
+
+    // arc de φ
+    const r = Math.min(70, Math.max(30, S*K*0.35));
+    if (Math.abs(phi) > 0.01 && S > 0.05){
+      const ax = OX + r*Math.cos(phi), ay = OY - r*Math.sin(phi);
+      arc.setAttribute("d", `M${OX+r},${OY} A${r},${r} 0 0 ${Q>0?0:1} ${ax},${ay}`);
+      const rt = r + 18;
+      arcT.setAttribute("x", OX + rt*Math.cos(phi/2)); arcT.setAttribute("y", OY - rt*Math.sin(phi/2));
+      arcT.textContent = "φ";
+    } else { arc.setAttribute("d",""); arcT.textContent = ""; }
+    arc.setAttribute("stroke", purple); arcT.setAttribute("fill", purple);
+    // angle recte
+    if (P > 0.4 && Math.abs(Q) > 0.4){
+      const s = 14, dy = Q > 0 ? -s : s;
+      right.setAttribute("d", `M${ex-s},${OY} L${ex-s},${OY+dy} L${ex},${OY+dy}`);
+    } else right.setAttribute("d","");
+    right.setAttribute("stroke", muted);
+
+    // valors
+    $("vP").textContent = `${nf(P,1)} kW`;
+    $("vQ").textContent = `${Q > 0 ? "+" : ""}${nf(Q,1).replace("-","−")} kvar`;
+    $("vS").textContent = `${nf(S,2)} kVA`;
+    $("vPhi").textContent = S > 1e-9 ? `${nf(phiDeg,1).replace("-","−")}°` : "—";
+    $("phiNote").textContent = S > 1e-9 ? `tg φ = Q/P = ${P > 1e-9 ? nf(Q/P,2).replace("-","−") : "∞"}` : "Sense càrrega";
+    $("vF").textContent = isNaN(fp) ? "—" : nf(fp,3);
+    const fill = $("mFill");
+    fill.style.width = isNaN(fp) ? "0%" : (fp*100) + "%";
+    let col = green, note;
+    if (isNaN(fp)) note = "Sense potència";
+    else if (fp >= 0.95) note = "Bon factor de potència (≥ 0,95)";
+    else if (fp >= 0.8) { col = orange; note = "Millorable: cal compensar"; }
+    else { col = css("--red"); note = "Dolent: molta energia reactiva"; }
+    fill.style.background = col;
+    $("fNote").textContent = note;
+
+    let type, tnote;
+    if (S < 1e-9) { type = "—"; tnote = ""; }
+    else if (Math.abs(Q) < 0.05) { type = "Resistiva"; tnote = "Q = 0 → cos φ = 1"; }
+    else if (Q > 0) { type = "Inductiva"; tnote = "Corrent endarrerit (bobines, motors)"; }
+    else { type = "Capacitiva"; tnote = "Corrent avançat (condensadors)"; }
+    $("vType").textContent = type; $("typeNote").textContent = tnote;
+  }
+
+  $("sP").addEventListener("input", update);
+  $("sQ").addEventListener("input", update);
+  document.querySelectorAll("button[data-p]").forEach(b => b.onclick = () => { $("sP").value = b.dataset.p; $("sQ").value = b.dataset.q; update(); });
+  if (window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches) document.body.classList.add("dark");
+  $("theme").onclick = () => { document.body.classList.toggle("dark"); drawStatic(); update(); };
+  drawStatic(); update();
+})();
+</script>
+</body>
+</html>
