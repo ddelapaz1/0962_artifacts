@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="ca">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sistema trifàsic animat</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --ink: #1b2533;
+    --muted: #5b6676;
+    --grid: #e6e8ec;
+    --axis: #c9ced6;
+    --l1: #d7263d;
+    --l2: #1a6fc2;
+    --l3: #13874f;
+    --sum: #1b2533;
+    --btn: #f2f4f7;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #12161c; --ink: #e8ecf1; --muted: #9aa5b4; --grid: #252c36; --axis: #3a4350;
+      --l1: #f2546a; --l2: #4f9cf0; --l3: #34c07c; --sum: #e8ecf1; --btn: #1e252e;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #12161c; --ink: #e8ecf1; --muted: #9aa5b4; --grid: #252c36; --axis: #3a4350;
+    --l1: #f2546a; --l2: #4f9cf0; --l3: #34c07c; --sum: #e8ecf1; --btn: #1e252e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+  }
+  main { max-width: 1240px; margin: 0 auto; padding: 14px 12px 16px; }
+  h1 { font-weight: 400; font-size: clamp(18px, 2.2vw, 24px); margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin: 0 0 8px; }
+  svg { width: 100%; height: auto; display: block; }
+  .controls { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; margin: 4px 0 2px; font-size: 12px; }
+  button, select {
+    font: inherit; color: var(--ink); background: var(--btn);
+    border: 1px solid var(--axis); border-radius: 6px; padding: 3px 9px; cursor: pointer;
+  }
+  label { display: inline-flex; gap: 6px; align-items: center; color: var(--muted); }
+  .readout { display: flex; flex-wrap: wrap; gap: 4px 16px; font-variant-numeric: tabular-nums; font-size: 12px; margin-top: 2px; }
+  .readout span b { font-weight: 600; }
+  .note { color: var(--muted); font-size: 10.5px; margin: 6px 0 0; line-height: 1.4; }
+  text { font-family: inherit; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Sistema trifàsic: fasors i ones</h1>
+  <p class="sub">Els tres fasors giren a velocitat angular ω; la seva projecció sobre l'eix imaginari és el valor instantani de cada tensió.</p>
+
+  <div class="controls">
+    <button id="play">⏸ Pausa</button>
+    <label>Velocitat
+      <select id="speed">
+        <option value="0.125">Molt lenta</option>
+        <option value="0.25" selected>Lenta</option>
+        <option value="0.5">Normal</option>
+        <option value="1">Ràpida</option>
+      </select>
+    </label>
+    <label><input type="checkbox" id="sum"> Mostra la suma L1 + L2 + L3</label>
+    <label><input type="checkbox" id="guides" checked> Línies de projecció</label>
+  </div>
+
+  <svg id="svg" viewBox="10 36 1290 534" role="img" aria-label="Animació dels fasors trifàsics i de les ones de tensió"></svg>
+
+  <div class="readout" id="readout"></div>
+
+  <p class="note">
+    L1 es pren com a referència angular. Seqüència de fases: L1 → L2 → L3 (gir antihorari).
+    Freqüència: 50 Hz · Període: 20 ms · 120° equivalen a 6,67 ms. L'animació està alentida;
+    l'eix de temps mostra els darrers 40 ms del senyal real.
+  </p>
+</main>
+
+<script>
+(() => {
+  const NS = "http://www.w3.org/2000/svg";
+  const svg = document.getElementById("svg");
+  const el = (tag, attrs = {}, parent = svg) => {
+    const n = document.createElementNS(NS, tag);
+    for (const k in attrs) n.setAttribute(k, attrs[k]);
+    parent.appendChild(n);
+    return n;
+  };
+
+  // Geometria
+  const cx = 1010, cy = 290, R = 190;          // diagrama fasorial (dreta)
+  const gx0 = 70, gx1 = 760;                   // finestra del gràfic temporal (esquerra)
+  const WINDOW_MS = 40, F = 50, T_MS = 1000 / F;
+  const pxPerMs = (gx1 - gx0) / WINDOW_MS;
+  const deg = Math.PI / 180;
+
+  const phases = [
+    { name: "L1", phi: 0,          label: "0°",    color: "var(--l1)" },
+    { name: "L2", phi: -120 * deg, label: "-120°", color: "var(--l2)" },
+    { name: "L3", phi: 120 * deg,  label: "+120°", color: "var(--l3)" },
+  ];
+
+  // Marcadors de fletxa
+  const defs = el("defs");
+  const marker = (id, color) => {
+    const m = el("marker", { id, viewBox: "0 0 10 10", refX: 9, refY: 5, markerWidth: 5, markerHeight: 5, orient: "auto-start-reverse" }, defs);
+    el("path", { d: "M0,0 L10,5 L0,10 z", fill: color }, m);
+  };
+  phases.forEach((p, i) => marker("arr" + i, p.color));
+  marker("arrS", "var(--sum)");
+
+  // ---- Gràfic temporal ----
+  const gGrid = el("g");
+  [-1, -0.5, 0, 0.5, 1].forEach(v => {
+    const y = cy - v * R;
+    el("line", { x1: gx0, x2: gx1, y1: y, y2: y, stroke: v === 0 ? "var(--axis)" : "var(--grid)", "stroke-width": 1 }, gGrid);
+    const t = el("text", { x: gx0 - 10, y: y + 5, "text-anchor": "end", "font-size": 17, fill: "var(--muted)" }, gGrid);
+    t.textContent = String(v).replace(".", ",");
+  });
+  el("line", { x1: gx0, x2: gx0, y1: cy - R - 20, y2: cy + R + 20, stroke: "var(--axis)" });
+  const yl = el("text", { x: gx0 - 40, y: cy - R - 36, "font-size": 18, fill: "var(--ink)" });
+  yl.textContent = "Tensió normalitzada (u / Û)";
+  const xl = el("text", { x: (gx0 + gx1) / 2, y: cy + R + 78, "text-anchor": "middle", "font-size": 19, fill: "var(--ink)" });
+  xl.textContent = "Temps (ms)";
+  const tickG = el("g");                       // marques de temps que es desplacen
+
+  // Clip perquè les ones no surtin de la finestra
+  const clip = el("clipPath", { id: "clipG" }, defs);
+  el("rect", { x: gx0, y: cy - R - 30, width: gx1 - gx0, height: 2 * R + 60 }, clip);
+  const waveG = el("g", { "clip-path": "url(#clipG)" });
+  const waves = phases.map(p => el("path", { fill: "none", stroke: p.color, "stroke-width": 3, "stroke-linejoin": "round" }, waveG));
+  const sumWave = el("path", { fill: "none", stroke: "var(--sum)", "stroke-width": 2.5, "stroke-dasharray": "8 6" }, waveG);
+
+  // "Ara": vora dreta del gràfic
+  el("line", { x1: gx1, x2: gx1, y1: cy - R - 20, y2: cy + R + 20, stroke: "var(--axis)", "stroke-dasharray": "3 4" });
+  const nowL = el("text", { x: gx1, y: cy - R - 28, "text-anchor": "middle", "font-size": 16, fill: "var(--muted)" });
+  nowL.textContent = "ara";
+
+  // ---- Diagrama fasorial ----
+  el("circle", { cx, cy, r: R, fill: "none", stroke: "var(--axis)", "stroke-dasharray": "5 6" });
+  el("line", { x1: cx - R - 40, x2: cx + R + 40, y1: cy, y2: cy, stroke: "var(--grid)", "stroke-width": 1.5 });
+  el("line", { x1: cx, x2: cx, y1: cy - R - 40, y2: cy + R + 40, stroke: "var(--grid)", "stroke-width": 1.5 });
+  const re = el("text", { x: cx + R + 30, y: cy + 24, "font-size": 18, fill: "var(--muted)" }); re.textContent = "Re";
+  const im = el("text", { x: cx + 10, y: cy - R - 26, "font-size": 18, fill: "var(--muted)" }); im.textContent = "Im";
+
+  // Arc de l'angle ωt de L1
+  const angArc = el("path", { fill: "none", stroke: "var(--muted)", "stroke-width": 1.5 });
+  const angTxt = el("text", { "font-size": 17, fill: "var(--muted)", "text-anchor": "middle" });
+
+  const guideG = el("g");
+  const guides = phases.map(p => el("line", { stroke: p.color, "stroke-width": 1.5, "stroke-dasharray": "4 5", opacity: 0.7 }, guideG));
+  const projG = el("g");
+  const proj = phases.map(p => el("line", { stroke: p.color, "stroke-width": 1.5, opacity: 0.5 }, projG));
+
+  const sumG = el("g");
+  const sumVec = phases.map(p => el("line", { stroke: p.color, "stroke-width": 3, opacity: 0.55, "marker-end": `url(#arr${phases.indexOf(p)})` }, sumG));
+  const sumTxt = el("text", { "font-size": 17, fill: "var(--ink)", "text-anchor": "middle" }, sumG);
+  sumTxt.textContent = "Σ = 0";
+
+  const vecs = phases.map((p, i) => el("line", { x1: cx, y1: cy, stroke: p.color, "stroke-width": 5, "stroke-linecap": "round", "marker-end": `url(#arr${i})` }));
+  const labels = phases.map(p => {
+    const t = el("text", { "font-size": 24, fill: p.color, "text-anchor": "middle", "font-weight": 500 });
+    t.textContent = `${p.name} · ${p.label}`;
+    return t;
+  });
+  el("circle", { cx, cy, r: 5, fill: "var(--ink)" });
+
+  const dots = phases.map(p => el("circle", { r: 6, fill: p.color, stroke: "var(--bg)", "stroke-width": 2 }));
+
+  // ---- Estat i controls ----
+  let tMs = 40, playing = true, speed = 0.25, last = null;
+  const btn = document.getElementById("play");
+  const sel = document.getElementById("speed");
+  const chkSum = document.getElementById("sum");
+  const chkGuides = document.getElementById("guides");
+  const readout = document.getElementById("readout");
+
+  btn.onclick = () => { playing = !playing; btn.textContent = playing ? "⏸ Pausa" : "▶ Reprèn"; last = null; };
+  sel.onchange = () => { speed = parseFloat(sel.value); };
+
+  const fmt = v => (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(2).replace(".", ",");
+
+  function draw() {
+    const wt = 2 * Math.PI * tMs / T_MS;      // angle de L1
+
+    // Ones: x = gx1 correspon a t actual, x = gx0 a t − 40 ms
+    const N = 260;
+    const vals = phases.map(() => []);
+    phases.forEach((p, i) => {
+      let d = "";
+      for (let k = 0; k <= N; k++) {
+        const x = gx0 + (gx1 - gx0) * k / N;
+        const tau = tMs - (gx1 - x) / pxPerMs;
+        const v = Math.sin(2 * Math.PI * tau / T_MS + p.phi);
+        d += (k ? "L" : "M") + x.toFixed(1) + "," + (cy - v * R).toFixed(1);
+      }
+      waves[i].setAttribute("d", d);
+    });
+    sumWave.setAttribute("d", `M${gx0},${cy} L${gx1},${cy}`);
+    sumWave.style.display = chkSum.checked ? "" : "none";
+
+    // Marques de temps
+    tickG.replaceChildren();
+    const tStart = tMs - WINDOW_MS;
+    for (let tk = Math.ceil(tStart / 5) * 5; tk <= tMs + 1e-9; tk += 5) {
+      const x = gx1 - (tMs - tk) * pxPerMs;
+      if (x < gx0 - 0.5) continue;
+      el("line", { x1: x, x2: x, y1: cy - R - 20, y2: cy + R + 20, stroke: "var(--grid)" }, tickG);
+      el("line", { x1: x, x2: x, y1: cy + R + 20, y2: cy + R + 26, stroke: "var(--axis)" }, tickG);
+      const t = el("text", { x, y: cy + R + 46, "text-anchor": "middle", "font-size": 17, fill: "var(--muted)" }, tickG);
+      t.textContent = Math.round(tk);
+    }
+
+    // Fasors
+    const tips = phases.map((p, i) => {
+      const a = wt + p.phi;
+      const L = R - 4;
+      const x = cx + L * Math.cos(a), y = cy - L * Math.sin(a);
+      vecs[i].setAttribute("x2", x); vecs[i].setAttribute("y2", y);
+      const lr = R + 44;
+      labels[i].setAttribute("x", cx + lr * Math.cos(a));
+      labels[i].setAttribute("y", cy - lr * Math.sin(a) + 7);
+      const yv = cy - R * Math.sin(a);
+      guides[i].setAttribute("x1", gx1); guides[i].setAttribute("x2", cx + R * Math.cos(a));
+      guides[i].setAttribute("y1", yv);  guides[i].setAttribute("y2", yv);
+      proj[i].setAttribute("x1", cx); proj[i].setAttribute("x2", cx + R * Math.cos(a));
+      proj[i].setAttribute("y1", yv); proj[i].setAttribute("y2", yv);
+      dots[i].setAttribute("cx", gx1); dots[i].setAttribute("cy", yv);
+      return { a, v: Math.sin(a) };
+    });
+    guideG.style.display = projG.style.display = chkGuides.checked ? "" : "none";
+
+    // Arc ωt (mòdul 360°)
+    const a1 = ((wt % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+    const ra = 44;
+    const ex = cx + ra * Math.cos(a1), ey = cy - ra * Math.sin(a1);
+    angArc.setAttribute("d", a1 < 1e-3 ? "" : `M${cx + ra},${cy} A${ra},${ra} 0 ${a1 > Math.PI ? 1 : 0} 0 ${ex},${ey}`);
+    const mid = a1 / 2, rt = ra + 22;
+    angTxt.setAttribute("x", cx + rt * Math.cos(mid));
+    angTxt.setAttribute("y", cy - rt * Math.sin(mid) + 5);
+    angTxt.textContent = `ωt = ${Math.round(a1 / deg)}°`;
+
+    // Suma cap-a-cua
+    sumG.style.display = chkSum.checked ? "" : "none";
+    if (chkSum.checked) {
+      const s = 0.45;                          // a escala, per no tapar els fasors
+      let px = cx, py = cy;
+      phases.forEach((p, i) => {
+        const nx = px + s * R * Math.cos(tips[i].a), ny = py - s * R * Math.sin(tips[i].a);
+        sumVec[i].setAttribute("x1", px); sumVec[i].setAttribute("y1", py);
+        sumVec[i].setAttribute("x2", nx); sumVec[i].setAttribute("y2", ny);
+        px = nx; py = ny;
+      });
+      sumTxt.setAttribute("x", cx - 26); sumTxt.setAttribute("y", cy + 24);
+    }
+
+    // Lectura numèrica
+    const sum = tips.reduce((acc, t) => acc + t.v, 0);
+    readout.innerHTML =
+      phases.map((p, i) => `<span style="color:${p.color}"><b>u${i + 1}/Û</b> = ${fmt(tips[i].v)}</span>`).join("") +
+      `<span><b>Σ</b> = ${fmt(Math.abs(sum) < 5e-3 ? 0 : sum)}</span>` +
+      `<span style="color:var(--muted)">t = ${tMs.toFixed(1).replace(".", ",")} ms</span>`;
+  }
+
+  function frame(ts) {
+    if (playing) {
+      // speed = voltes per segon a la pantalla (0,25 → un període cada 4 s)
+      if (last !== null) tMs += (ts - last) / 1000 * speed * T_MS;
+      last = ts;
+    }
+    draw();
+    requestAnimationFrame(frame);
+  }
+  chkSum.onchange = chkGuides.onchange = draw;
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
